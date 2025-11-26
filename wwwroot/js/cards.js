@@ -27,10 +27,10 @@ function toggleCardExpand(cardId) {
     const card = document.getElementById(cardId);
     const content = card.querySelector('.expandable-content');
     
-    if (content.style.display === 'none' || content.style.display === '') {
-        content.style.display = 'block';
+    if (content.classList.contains('hidden')) {
+        content.classList.remove('hidden');
     } else {
-        content.style.display = 'none';
+        content.classList.add('hidden');
     }
 }
 

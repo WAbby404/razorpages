@@ -88,7 +88,7 @@ public class AppDbContext : DbContext
                 CurrentTime = DateTime.Now,
                 VisitorCount = new Random().Next(1, 1000)
             };
-            return Results.Razor(Home(model));
+            return Results.Razor(TailwindLayout("Home", Home(model)));
         });
 
         app.MapGet("/grid", () =>
@@ -104,7 +104,13 @@ public class AppDbContext : DbContext
                 "Product 7",
                 "Product 8"
             };
-            return Results.Razor(Grid(items));
+            
+            RenderFragment content = @<div>
+                <h1 class="text-3xl font-bold text-gray-800 mb-6">Grid Demo</h1>
+                @Grid(items)
+            </div>;
+            
+            return Results.Razor(TailwindLayout("Grid Demo", content));
         });
 
         app.MapGet("/composite", () =>
@@ -132,36 +138,38 @@ public class AppDbContext : DbContext
             var card2 = Card("Features Grid", Grid(items));
             
             // Create a container that has both cards
-            RenderFragment page = @<div style="padding: 2rem;">
-                <h1>Cards Demo</h1>
+            RenderFragment content = @<div>
+                <h1 class="text-3xl font-bold text-gray-800 mb-6">Cards Demo</h1>
                 @card1
                 @card2
             </div>;
             
-            return Results.Razor(page);
+            return Results.Razor(TailwindLayout("Cards Demo", content));
         });
 
         app.MapGet("/events", () =>
         {
-            RenderFragment page = @<html>
+            RenderFragment page = @<html lang="en">
                 <head>
+                    <meta charset="UTF-8" />
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                     <title>Event Cards</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; padding: 2rem; background-color: #f5f5f5; }
-                    </style>
+                    <script src="https://cdn.tailwindcss.com"></script>
                 </head>
-                <body>
-                    <h1>Cards with Events</h1>
-                    
-                    @ClickableCard("Alert Card", "Click this card to see an alert!", "alert('You clicked the card!')")
-                    
-                    @ClickableCard("Console Log", "This card logs to the console", "console.log('Card clicked at: ' + new Date())")
-                    
-                    @LinkCard("Navigation Card", "Click the link to go to the grid page", "/grid")
-                    
-                    @LinkCard("External Link", "Visit Google", "https://google.com")
-                    
-                    @FormCard("Search Card", "/search")
+                <body class="bg-gray-50 min-h-screen p-8">
+                    <div class="container mx-auto max-w-4xl">
+                        <h1 class="text-4xl font-bold text-gray-800 mb-8">Cards with Events</h1>
+                        
+                        @ClickableCard("Alert Card", "Click this card to see an alert!", "alert('You clicked the card!')")
+                        
+                        @ClickableCard("Console Log", "This card logs to the console", "console.log('Card clicked at: ' + new Date())")
+                        
+                        @LinkCard("Navigation Card", "Click the link to go to the grid page", "/grid")
+                        
+                        @LinkCard("External Link", "Visit Google", "https://google.com")
+                        
+                        @FormCard("Search Card", "/search")
+                    </div>
                 </body>
             </html>;
             
@@ -174,20 +182,24 @@ public class AppDbContext : DbContext
                 ? "No search query provided" 
                 : $"You searched for: {query}";
             
-            RenderFragment page = @<div style="padding: 2rem;">
-                <h1>Search Results</h1>
-                <p>@result</p>
-                <a href="/events">← Back to Events</a>
+            RenderFragment content = @<div>
+                <div class="bg-white rounded-lg shadow-md p-8 max-w-2xl">
+                    <h1 class="text-3xl font-bold text-gray-800 mb-4">Search Results</h1>
+                    <p class="text-lg text-gray-700 mb-6">@result</p>
+                    <a href="/events" class="inline-flex items-center text-blue-600 hover:text-blue-800 transition-colors">
+                        ← Back to Events
+                    </a>
+                </div>
             </div>;
             
-            return Results.Razor(page);
+            return Results.Razor(TailwindLayout("Search Results", content));
         });
 
         app.MapGet("/external-js", () =>
         {
             RenderFragment pageContent = @<div>
-                <h1>Cards with External JavaScript</h1>
-                <p>These cards use JavaScript functions defined in external .js files!</p>
+                <h1 class="text-4xl font-bold text-gray-800 mb-4">Cards with External JavaScript</h1>
+                <p class="text-gray-600 mb-8">These cards use JavaScript functions defined in external .js files!</p>
                 
                 @ExternalJSCard("card1", "Interactive Card 1", "This card uses external JavaScript for all interactions. Try clicking it or the buttons!")
                 
@@ -197,14 +209,14 @@ public class AppDbContext : DbContext
                 
                 @ExpandableCard("card4", "Another Expandable", "Click the toggle button...", "More detailed information can go here. You can put any content in the expandable section!")
                 
-                <div style="margin-top: 2rem; padding: 1rem; background-color: white; border-radius: 8px;">
-                    <h3>About External JavaScript</h3>
-                    <p>The JavaScript functions are loaded from:</p>
-                    <ul>
-                        <li><code>/js/cards.js</code> - Card-specific functions (handleCardClick, toggleCardExpand, etc.)</li>
-                        <li><code>/js/utils.js</code> - Utility functions (UIHelpers.showNotification, etc.)</li>
+                <div class="mt-8 p-6 bg-white rounded-lg shadow-md">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">About External JavaScript</h3>
+                    <p class="text-gray-700 mb-3">The JavaScript functions are loaded from:</p>
+                    <ul class="list-disc list-inside space-y-2 text-gray-600 mb-4">
+                        <li><code class="bg-gray-100 px-2 py-1 rounded text-sm">/js/cards.js</code> - Card-specific functions (handleCardClick, toggleCardExpand, etc.)</li>
+                        <li><code class="bg-gray-100 px-2 py-1 rounded text-sm">/js/utils.js</code> - Utility functions (UIHelpers.showNotification, etc.)</li>
                     </ul>
-                    <p>The CSS is loaded from <code>/css/styles.css</code></p>
+                    <p class="text-gray-700">The CSS is loaded from <code class="bg-gray-100 px-2 py-1 rounded text-sm">/css/styles.css</code></p>
                 </div>
             </div>;
             
@@ -216,29 +228,33 @@ public class AppDbContext : DbContext
         {
             var products = await db.Products.ToListAsync();
             
-            RenderFragment page = @<div style="padding: 2rem;">
-                <h1>Products from Database</h1>
-                <p>Total products: @products.Count</p>
-                @Grid(products)
-                <div style="margin-top: 2rem;">
-                    <a href="/add-product" style="padding: 0.5rem 1rem; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">Add New Product</a>
+            RenderFragment content = @<div>
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-800 mb-2">Products</h1>
+                        <p class="text-gray-600">Total products: <span class="font-semibold">@products.Count</span></p>
+                    </div>
+                    <a href="/add-product" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-md">
+                        + Add Product
+                    </a>
                 </div>
+                @Grid(products)
             </div>;
             
-            return Results.Razor(page);
+            return Results.Razor(TailwindLayout("Products", content));
         });
 
         app.MapGet("/categories", async (AppDbContext db) =>
         {
             var categories = await db.Categories.ToListAsync();
             
-            RenderFragment page = @<div style="padding: 2rem;">
-                <h1>Categories from Database</h1>
-                <p>Total categories: @categories.Count</p>
+            RenderFragment content = @<div>
+                <h1 class="text-3xl font-bold text-gray-800 mb-2">Categories</h1>
+                <p class="text-gray-600 mb-6">Total categories: <span class="font-semibold">@categories.Count</span></p>
                 @Grid(categories)
             </div>;
             
-            return Results.Razor(page);
+            return Results.Razor(TailwindLayout("Categories", content));
         });
 
         app.MapGet("/product/{id}", async (int id, AppDbContext db) =>
@@ -250,44 +266,84 @@ public class AppDbContext : DbContext
                 return Results.NotFound($"Product with ID {id} not found");
             }
             
-            RenderFragment page = @<div style="padding: 2rem;">
-                <h1>@product.Name</h1>
-                <div style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <p><strong>Description:</strong> @product.Description</p>
-                    <p><strong>Price:</strong> $@product.Price.ToString("F2")</p>
-                    <p><strong>Created:</strong> @product.CreatedAt.ToString("F")</p>
-                </div>
-                <div style="margin-top: 1rem;">
-                    <a href="/products" style="color: #007bff; text-decoration: none;">← Back to Products</a>
+            RenderFragment content = @<div>
+                <a href="/products" class="inline-flex items-center text-blue-600 hover:text-blue-800 mb-6 transition-colors">
+                    ← Back to Products
+                </a>
+                <div class="bg-white rounded-lg shadow-lg p-8 max-w-2xl">
+                    <h1 class="text-4xl font-bold text-gray-800 mb-6">@product.Name</h1>
+                    <div class="space-y-4">
+                        <div>
+                            <span class="text-sm font-semibold text-gray-500 uppercase">Description</span>
+                            <p class="text-lg text-gray-700 mt-1">@product.Description</p>
+                        </div>
+                        <div>
+                            <span class="text-sm font-semibold text-gray-500 uppercase">Price</span>
+                            <p class="text-3xl font-bold text-green-600 mt-1">$@product.Price.ToString("F2")</p>
+                        </div>
+                        <div>
+                            <span class="text-sm font-semibold text-gray-500 uppercase">Created</span>
+                            <p class="text-gray-700 mt-1">@product.CreatedAt.ToString("F")</p>
+                        </div>
+                    </div>
                 </div>
             </div>;
             
-            return Results.Razor(page);
+            return Results.Razor(TailwindLayout($"Product: {product.Name}", content));
         });
 
         app.MapGet("/add-product", () =>
         {
-            RenderFragment page = @<div style="padding: 2rem;">
-                <h1>Add New Product</h1>
-                <form method="post" action="/products" style="background-color: white; padding: 2rem; border-radius: 8px; max-width: 500px;">
-                    <div style="margin-bottom: 1rem;">
-                        <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Name:</label>
-                        <input type="text" name="name" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;" />
-                    </div>
-                    <div style="margin-bottom: 1rem;">
-                        <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Description:</label>
-                        <textarea name="description" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; min-height: 100px;"></textarea>
-                    </div>
-                    <div style="margin-bottom: 1rem;">
-                        <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Price:</label>
-                        <input type="number" name="price" step="0.01" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;" />
-                    </div>
-                    <button type="submit" style="padding: 0.75rem 1.5rem; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Add Product</button>
-                    <a href="/products" style="margin-left: 1rem; color: #007bff; text-decoration: none;">Cancel</a>
-                </form>
+            RenderFragment content = @<div>
+                <a href="/products" class="inline-flex items-center text-blue-600 hover:text-blue-800 mb-6 transition-colors">
+                    ← Back to Products
+                </a>
+                <div class="bg-white rounded-lg shadow-lg p-8 max-w-2xl">
+                    <h1 class="text-3xl font-bold text-gray-800 mb-6">Add New Product</h1>
+                    <form method="post" action="/products" class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Name</label>
+                            <input type="text" 
+                                   name="name" 
+                                   required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                                   placeholder="Enter product name" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+                            <textarea name="description" 
+                                      required 
+                                      rows="4"
+                                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                                      placeholder="Enter product description"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Price</label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2 text-gray-500">$</span>
+                                <input type="number" 
+                                       name="price" 
+                                       step="0.01" 
+                                       required 
+                                       class="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                                       placeholder="0.00" />
+                            </div>
+                        </div>
+                        <div class="flex gap-4">
+                            <button type="submit" 
+                                    class="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md">
+                                Add Product
+                            </button>
+                            <a href="/products" 
+                               class="flex-1 bg-gray-200 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-300 transition-colors font-semibold text-center">
+                                Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
             </div>;
             
-            return Results.Razor(page);
+            return Results.Razor(TailwindLayout("Add Product", content));
         });
 
         app.MapPost("/products", async (HttpRequest request, AppDbContext db) =>
@@ -313,35 +369,51 @@ public class AppDbContext : DbContext
 
     private static RenderFragment Home(HomeModel model)
     {
-        return @<div>
-            <h1>@model.Title</h1>
-            <p>@model.Message</p>
-            <p>Current Time: @model.CurrentTime.ToString("F")</p>
-            <p>Visitor Count: @model.VisitorCount</p>
+        return @<div class="bg-white rounded-lg shadow-md p-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-4">@model.Title</h1>
+            <p class="text-lg text-gray-600 mb-3">@model.Message</p>
+            <p class="text-sm text-gray-500 mb-2">
+                <span class="font-semibold">Current Time:</span> @model.CurrentTime.ToString("F")
+            </p>
+            <p class="text-sm text-gray-500">
+                <span class="font-semibold">Visitor Count:</span> 
+                <span class="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full">@model.VisitorCount</span>
+            </p>
         </div>;
     }
 
     private static RenderFragment Grid<T>(List<T> items)
     {
-        return @<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; padding: 1rem;">
+        return @<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             @foreach (var item in items)
             {
-                <div style="border: 1px solid #ccc; border-radius: 8px; padding: 1rem; background-color: #f9f9f9;">
+                <div class="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden">
                     @if (item is Product product)
                     {
-                        <h3 style="margin-top: 0; color: #007bff;">@product.Name</h3>
-                        <p style="color: #666; font-size: 0.9rem;">@product.Description</p>
-                        <p style="font-weight: bold; color: #28a745;">$@product.Price.ToString("F2")</p>
-                        <a href="/product/@product.Id" style="color: #007bff; text-decoration: none; font-size: 0.9rem;">View Details →</a>
+                        <div class="p-6">
+                            <h3 class="text-xl font-bold text-blue-600 mb-2">@product.Name</h3>
+                            <p class="text-gray-600 text-sm mb-4 line-clamp-2">@product.Description</p>
+                            <div class="flex justify-between items-center">
+                                <p class="text-2xl font-bold text-green-600">$@product.Price.ToString("F2")</p>
+                                <a href="/product/@product.Id" 
+                                   class="text-blue-600 hover:text-blue-800 font-medium text-sm transition-colors">
+                                    View Details →
+                                </a>
+                            </div>
+                        </div>
                     }
                     else if (item is Category category)
                     {
-                        <h3 style="margin-top: 0; color: #ffc107;">@category.Name</h3>
-                        <p style="color: #666;">@category.Description</p>
+                        <div class="p-6">
+                            <h3 class="text-xl font-bold text-yellow-600 mb-2">@category.Name</h3>
+                            <p class="text-gray-600 text-sm">@category.Description</p>
+                        </div>
                     }
                     else
                     {
-                        @item?.ToString()
+                        <div class="p-6">
+                            <p class="text-gray-700">@item?.ToString()</p>
+                        </div>
                     }
                 </div>
             }
@@ -354,17 +426,13 @@ public class AppDbContext : DbContext
         return @<html>
             <head>
                 <title>My App</title>
-                <style>
-                    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-                    .header { background-color: #333; color: white; padding: 1rem; }
-                    .content { padding: 1rem; }
-                </style>
+                <script src="https://cdn.tailwindcss.com"></script>
             </head>
-            <body>
-                <div class="header">
+            <body class="bg-gray-50">
+                <div class="bg-gray-800 text-white p-4">
                     @header
                 </div>
-                <div class="content">
+                <div class="p-4">
                     @content
                 </div>
             </body>
@@ -374,8 +442,8 @@ public class AppDbContext : DbContext
     // Example: RenderFragment that accepts another RenderFragment as parameter
     private static RenderFragment Card(string title, RenderFragment body)
     {
-        return @<div style="border: 2px solid #007bff; border-radius: 8px; padding: 1.5rem; margin: 1rem 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h2 style="color: #007bff; margin-top: 0;">@title</h2>
+        return @<div class="border-2 border-blue-500 rounded-lg p-6 my-4 shadow-md bg-white">
+            <h2 class="text-blue-600 text-2xl font-bold mb-4">@title</h2>
             <div>
                 @body
             </div>
@@ -386,34 +454,40 @@ public class AppDbContext : DbContext
     private static RenderFragment ClickableCard(string title, string message, string jsAction)
     {
         return @<div 
-            style="border: 2px solid #28a745; border-radius: 8px; padding: 1.5rem; margin: 1rem 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s;"
-            onclick="@jsAction"
-            onmouseover="this.style.transform='scale(1.02)'"
-            onmouseout="this.style.transform='scale(1)'">
-            <h2 style="color: #28a745; margin-top: 0;">@title</h2>
-            <p>@message</p>
-            <small style="color: #666;">Click me!</small>
+            class="border-2 border-green-500 rounded-lg p-6 my-4 shadow-md bg-white cursor-pointer transform transition-transform hover:scale-105"
+            onclick="@jsAction">
+            <h2 class="text-green-600 text-2xl font-bold mb-2">@title</h2>
+            <p class="text-gray-700 mb-2">@message</p>
+            <small class="text-gray-500">Click me!</small>
         </div>;
     }
 
     // Card with a link (navigation event)
     private static RenderFragment LinkCard(string title, string description, string url)
     {
-        return @<div style="border: 2px solid #ffc107; border-radius: 8px; padding: 1.5rem; margin: 1rem 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h2 style="color: #ffc107; margin-top: 0;">@title</h2>
-            <p>@description</p>
-            <a href="@url" style="color: #007bff; text-decoration: none; font-weight: bold;">Visit →</a>
+        return @<div class="border-2 border-yellow-400 rounded-lg p-6 my-4 shadow-md bg-white hover:shadow-lg transition-shadow">
+            <h2 class="text-yellow-600 text-2xl font-bold mb-2">@title</h2>
+            <p class="text-gray-700 mb-4">@description</p>
+            <a href="@url" class="text-blue-600 hover:text-blue-800 font-bold inline-flex items-center transition-colors">
+                Visit →
+            </a>
         </div>;
     }
 
     // Card with a form submission
     private static RenderFragment FormCard(string title, string actionUrl)
     {
-        return @<div style="border: 2px solid #dc3545; border-radius: 8px; padding: 1.5rem; margin: 1rem 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h2 style="color: #dc3545; margin-top: 0;">@title</h2>
-            <form method="get" action="@actionUrl">
-                <input type="text" name="query" placeholder="Enter something..." style="padding: 0.5rem; width: 200px; border: 1px solid #ccc; border-radius: 4px;" />
-                <button type="submit" style="padding: 0.5rem 1rem; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 0.5rem;">Submit</button>
+        return @<div class="border-2 border-red-500 rounded-lg p-6 my-4 shadow-md bg-white">
+            <h2 class="text-red-600 text-2xl font-bold mb-4">@title</h2>
+            <form method="get" action="@actionUrl" class="flex gap-2">
+                <input type="text" 
+                       name="query" 
+                       placeholder="Enter something..." 
+                       class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500" />
+                <button type="submit" 
+                        class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                    Submit
+                </button>
             </form>
         </div>;
     }
@@ -421,15 +495,24 @@ public class AppDbContext : DbContext
     // Card using external JavaScript functions
     private static RenderFragment ExternalJSCard(string id, string title, string content)
     {
-        return @<div id="@id" class="interactive-card"
+        return @<div id="@id" 
+            class="border-2 border-purple-500 rounded-lg p-6 my-4 shadow-md bg-white cursor-pointer transition-all hover:shadow-xl"
             onclick="handleCardClick('@id', 'Card clicked!')"
             onmouseenter="highlightCard(this)"
             onmouseleave="unhighlightCard(this)">
-            <h2 class="card-title">@title</h2>
-            <div class="card-content">
-                <p>@content</p>
-                <button class="btn btn-primary" onclick="event.stopPropagation(); logCardClick('@id')">Log Click</button>
-                <button class="btn btn-success" onclick="event.stopPropagation(); UIHelpers.showNotification('Hello from @title!', 'success')">Show Notification</button>
+            <h2 class="text-purple-600 text-2xl font-bold mb-3">@title</h2>
+            <div>
+                <p class="text-gray-700 mb-4">@content</p>
+                <div class="flex gap-2">
+                    <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors" 
+                            onclick="event.stopPropagation(); logCardClick('@id')">
+                        Log Click
+                    </button>
+                    <button class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors" 
+                            onclick="event.stopPropagation(); UIHelpers.showNotification('Hello from @title!', 'success')">
+                        Show Notification
+                    </button>
+                </div>
             </div>
         </div>;
     }
@@ -437,12 +520,15 @@ public class AppDbContext : DbContext
     // Expandable card using external JavaScript
     private static RenderFragment ExpandableCard(string id, string title, string preview, string fullContent)
     {
-        return @<div id="@id" class="interactive-card">
-            <h2 class="card-title">@title</h2>
-            <p>@preview</p>
-            <button class="btn btn-primary" onclick="toggleCardExpand('@id')">Toggle Details</button>
-            <div class="expandable-content">
-                <p>@fullContent</p>
+        return @<div id="@id" class="border-2 border-indigo-500 rounded-lg p-6 my-4 shadow-md bg-white">
+            <h2 class="text-indigo-600 text-2xl font-bold mb-3">@title</h2>
+            <p class="text-gray-700 mb-4">@preview</p>
+            <button class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors" 
+                    onclick="toggleCardExpand('@id')">
+                Toggle Details
+            </button>
+            <div class="expandable-content hidden mt-4 pt-4 border-t border-gray-200">
+                <p class="text-gray-700">@fullContent</p>
             </div>
         </div>;
     }
@@ -450,18 +536,85 @@ public class AppDbContext : DbContext
     // Page layout with external JS/CSS references
     private static RenderFragment PageWithExternalAssets(string title, RenderFragment content)
     {
-        return @<html>
+        return @<html lang="en">
             <head>
+                <meta charset="UTF-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                 <title>@title</title>
+                <script src="https://cdn.tailwindcss.com"></script>
                 <link rel="stylesheet" href="/css/styles.css" />
             </head>
-            <body style="font-family: Arial, sans-serif; padding: 2rem; background-color: #f5f5f5;">
-                @content
+            <body class="bg-gray-50 min-h-screen p-8">
+                <div class="container mx-auto">
+                    @content
+                </div>
                 
                 <!-- Load external JavaScript files -->
                 <script src="/js/cards.js"></script>
                 <script src="/js/utils.js"></script>
             </body>
         </html>;
+    }
+
+    // Tailwind CSS Layout - Base layout with Tailwind from CDN
+    private static RenderFragment TailwindLayout(string title, RenderFragment content, bool includeNav = true)
+    {
+        return @<html lang="en">
+            <head>
+                <meta charset="UTF-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                <title>@title</title>
+                <!-- Tailwind CSS from CDN -->
+                <script src="https://cdn.tailwindcss.com"></script>
+                <style type="text/tailwindcss">
+                    @@layer utilities {
+                        .transition-all {
+                            transition-property: all;
+                            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+                            transition-duration: 150ms;
+                        }
+                    }
+                </style>
+            </head>
+            <body class="bg-gray-50 min-h-screen">
+                @if (includeNav)
+                {
+                    @Navigation()
+                }
+                <main class="container mx-auto px-4 py-8">
+                    @content
+                </main>
+                <footer class="bg-gray-800 text-white py-6 mt-12">
+                    <div class="container mx-auto px-4 text-center">
+                        <p class="text-sm">&copy; 2025 Razor Pages App. Built with ASP.NET Core & Tailwind CSS.</p>
+                    </div>
+                </footer>
+            </body>
+        </html>;
+    }
+
+    // Navigation component
+    private static RenderFragment Navigation()
+    {
+        return @<nav class="bg-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center space-x-8">
+                        <a href="/" class="text-2xl font-bold text-blue-600 hover:text-blue-700">RazorPages</a>
+                        <div class="hidden md:flex space-x-6">
+                            <a href="/products" class="text-gray-700 hover:text-blue-600 transition-colors">Products</a>
+                            <a href="/categories" class="text-gray-700 hover:text-blue-600 transition-colors">Categories</a>
+                            <a href="/grid" class="text-gray-700 hover:text-blue-600 transition-colors">Grid Demo</a>
+                            <a href="/events" class="text-gray-700 hover:text-blue-600 transition-colors">Events</a>
+                        </div>
+                    </div>
+                    <div>
+                        <a href="/add-product" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                            Add Product
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </nav>;
     }
 }
