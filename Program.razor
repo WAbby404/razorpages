@@ -1,6 +1,54 @@
 @using Microsoft.AspNetCore.Components;
+@using Microsoft.EntityFrameworkCore;
 
 @code {
+    public class Product
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+public class Category
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+}
+
+// Database Context
+public class AppDbContext : DbContext
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+    {
+    }
+
+    public DbSet<Product> Products { get; set; }
+    public DbSet<Category> Categories { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        // Seed some initial data
+        modelBuilder.Entity<Category>().HasData(
+            new Category { Id = 1, Name = "Electronics", Description = "Electronic devices and gadgets" },
+            new Category { Id = 2, Name = "Books", Description = "Physical and digital books" },
+            new Category { Id = 3, Name = "Clothing", Description = "Apparel and accessories" }
+        );
+
+        modelBuilder.Entity<Product>().HasData(
+            new Product { Id = 1, Name = "Laptop", Description = "High-performance laptop", Price = 999.99m, CreatedAt = DateTime.Now },
+            new Product { Id = 2, Name = "Mouse", Description = "Wireless mouse", Price = 29.99m, CreatedAt = DateTime.Now },
+            new Product { Id = 3, Name = "Keyboard", Description = "Mechanical keyboard", Price = 79.99m, CreatedAt = DateTime.Now },
+            new Product { Id = 4, Name = "C# Programming", Description = "Learn C# fundamentals", Price = 39.99m, CreatedAt = DateTime.Now },
+            new Product { Id = 5, Name = "T-Shirt", Description = "Cotton t-shirt", Price = 19.99m, CreatedAt = DateTime.Now }
+        );
+    }
+}
+
     public class HomeModel
     {
         public string Title { get; set; } = "Welcome to My App";
@@ -15,7 +63,18 @@
 
         builder.Services.AddRazorComponents();
 
+        // Add Entity Framework Core with SQLite
+        builder.Services.AddDbContext<AppDbContext>(options =>
+            options.UseSqlite("Data Source=app.db"));
+
         var app = builder.Build();
+
+        // Create database and apply migrations on startup
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.EnsureCreated();
+        }
 
         // Enable static files from wwwroot
         app.UseStaticFiles();
@@ -152,6 +211,103 @@
             return Results.Razor(PageWithExternalAssets("External JS Demo", pageContent));
         });
 
+        // Database routes
+        app.MapGet("/products", async (AppDbContext db) =>
+        {
+            var products = await db.Products.ToListAsync();
+            
+            RenderFragment page = @<div style="padding: 2rem;">
+                <h1>Products from Database</h1>
+                <p>Total products: @products.Count</p>
+                @Grid(products)
+                <div style="margin-top: 2rem;">
+                    <a href="/add-product" style="padding: 0.5rem 1rem; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">Add New Product</a>
+                </div>
+            </div>;
+            
+            return Results.Razor(page);
+        });
+
+        app.MapGet("/categories", async (AppDbContext db) =>
+        {
+            var categories = await db.Categories.ToListAsync();
+            
+            RenderFragment page = @<div style="padding: 2rem;">
+                <h1>Categories from Database</h1>
+                <p>Total categories: @categories.Count</p>
+                @Grid(categories)
+            </div>;
+            
+            return Results.Razor(page);
+        });
+
+        app.MapGet("/product/{id}", async (int id, AppDbContext db) =>
+        {
+            var product = await db.Products.FindAsync(id);
+            
+            if (product == null)
+            {
+                return Results.NotFound($"Product with ID {id} not found");
+            }
+            
+            RenderFragment page = @<div style="padding: 2rem;">
+                <h1>@product.Name</h1>
+                <div style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <p><strong>Description:</strong> @product.Description</p>
+                    <p><strong>Price:</strong> $@product.Price.ToString("F2")</p>
+                    <p><strong>Created:</strong> @product.CreatedAt.ToString("F")</p>
+                </div>
+                <div style="margin-top: 1rem;">
+                    <a href="/products" style="color: #007bff; text-decoration: none;">← Back to Products</a>
+                </div>
+            </div>;
+            
+            return Results.Razor(page);
+        });
+
+        app.MapGet("/add-product", () =>
+        {
+            RenderFragment page = @<div style="padding: 2rem;">
+                <h1>Add New Product</h1>
+                <form method="post" action="/products" style="background-color: white; padding: 2rem; border-radius: 8px; max-width: 500px;">
+                    <div style="margin-bottom: 1rem;">
+                        <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Name:</label>
+                        <input type="text" name="name" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;" />
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Description:</label>
+                        <textarea name="description" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; min-height: 100px;"></textarea>
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Price:</label>
+                        <input type="number" name="price" step="0.01" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;" />
+                    </div>
+                    <button type="submit" style="padding: 0.75rem 1.5rem; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Add Product</button>
+                    <a href="/products" style="margin-left: 1rem; color: #007bff; text-decoration: none;">Cancel</a>
+                </form>
+            </div>;
+            
+            return Results.Razor(page);
+        });
+
+        app.MapPost("/products", async (HttpRequest request, AppDbContext db) =>
+        {
+            var form = await request.ReadFormAsync();
+            
+            var product = new Product
+            {
+                Name = form["name"].ToString(),
+                Description = form["description"].ToString(),
+                Price = decimal.Parse(form["price"].ToString()),
+                CreatedAt = DateTime.Now
+            };
+            
+            db.Products.Add(product);
+            await db.SaveChangesAsync();
+            
+            return Results.Redirect("/products");
+        });
+
         app.Run();
     }
 
@@ -171,7 +327,22 @@
             @foreach (var item in items)
             {
                 <div style="border: 1px solid #ccc; border-radius: 8px; padding: 1rem; background-color: #f9f9f9;">
-                    @item?.ToString()
+                    @if (item is Product product)
+                    {
+                        <h3 style="margin-top: 0; color: #007bff;">@product.Name</h3>
+                        <p style="color: #666; font-size: 0.9rem;">@product.Description</p>
+                        <p style="font-weight: bold; color: #28a745;">$@product.Price.ToString("F2")</p>
+                        <a href="/product/@product.Id" style="color: #007bff; text-decoration: none; font-size: 0.9rem;">View Details →</a>
+                    }
+                    else if (item is Category category)
+                    {
+                        <h3 style="margin-top: 0; color: #ffc107;">@category.Name</h3>
+                        <p style="color: #666;">@category.Description</p>
+                    }
+                    else
+                    {
+                        @item?.ToString()
+                    }
                 </div>
             }
         </div>;
