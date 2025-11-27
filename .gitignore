@@ -9,6 +9,10 @@ app.db*
 # Node modules
 node_modules/
 
+# Generated bundles
+wwwroot/js/bundle.js
+wwwroot/js/bundle.js.map
+
 # dotenv files
 .env
 
