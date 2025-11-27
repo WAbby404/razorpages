@@ -13,6 +13,13 @@ node_modules/
 wwwroot/js/bundle.js
 wwwroot/js/bundle.js.map
 
+# Generated JavaScript files from TypeScript
+wwwroot/js/*.js
+!wwwroot/js/bundle.js
+
+# npm
+package-lock.json
+
 # dotenv files
 .env
 
