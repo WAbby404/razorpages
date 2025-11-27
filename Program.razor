@@ -1,5 +1,8 @@
 @using Microsoft.AspNetCore.Components;
 @using Microsoft.EntityFrameworkCore;
+@using System.Security.Claims;
+@using Microsoft.AspNetCore.Authentication;
+@using Microsoft.AspNetCore.Authentication.Cookies;
 
 @code {
     public class Product
@@ -18,6 +21,15 @@ public class Category
     public string Description { get; set; } = string.Empty;
 }
 
+public class User
+{
+    public int Id { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
 // Database Context
 public class AppDbContext : DbContext
 {
@@ -27,6 +39,7 @@ public class AppDbContext : DbContext
 
     public DbSet<Product> Products { get; set; }
     public DbSet<Category> Categories { get; set; }
+    public DbSet<User> Users { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,7 +59,33 @@ public class AppDbContext : DbContext
             new Product { Id = 4, Name = "C# Programming", Description = "Learn C# fundamentals", Price = 39.99m, CreatedAt = DateTime.Now },
             new Product { Id = 5, Name = "T-Shirt", Description = "Cotton t-shirt", Price = 19.99m, CreatedAt = DateTime.Now }
         );
+
+        // Seed a demo user (password: "password123")
+        modelBuilder.Entity<User>().HasData(
+            new User 
+            { 
+                Id = 1, 
+                Username = "demo", 
+                Email = "demo@example.com",
+                PasswordHash = HashPassword("password123"),
+                CreatedAt = DateTime.Now
+            }
+        );
     }
+}
+
+// Simple password hashing (in production, use BCrypt or ASP.NET Core Identity)
+public static string HashPassword(string password)
+{
+    using var sha256 = System.Security.Cryptography.SHA256.Create();
+    var bytes = System.Text.Encoding.UTF8.GetBytes(password + "SALT_KEY_HERE");
+    var hash = sha256.ComputeHash(bytes);
+    return Convert.ToBase64String(hash);
+}
+
+public static bool VerifyPassword(string password, string hash)
+{
+    return HashPassword(password) == hash;
 }
 
     public class HomeModel
@@ -67,6 +106,19 @@ public class AppDbContext : DbContext
         builder.Services.AddDbContext<AppDbContext>(options =>
             options.UseSqlite("Data Source=app.db"));
 
+        // Add Authentication & Authorization
+        builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+            .AddCookie(options =>
+            {
+                options.LoginPath = "/login";
+                options.LogoutPath = "/logout";
+                options.AccessDeniedPath = "/access-denied";
+                options.ExpireTimeSpan = TimeSpan.FromHours(24);
+                options.SlidingExpiration = true;
+            });
+        
+        builder.Services.AddAuthorization();
+
         var app = builder.Build();
 
         // Create database and apply migrations on startup
@@ -79,7 +131,277 @@ public class AppDbContext : DbContext
         // Enable static files from wwwroot
         app.UseStaticFiles();
 
-        app.MapGet("/", () =>
+        // Enable authentication & authorization
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        // Authentication Routes
+        app.MapGet("/login", (HttpContext context) =>
+        {
+            // Check if already logged in
+            if (context.User.Identity?.IsAuthenticated == true)
+            {
+                return Results.Redirect("/");
+            }
+
+            RenderFragment content = @<div class="max-w-md mx-auto">
+                <div class="bg-white rounded-lg shadow-lg p-8">
+                    <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Login</h1>
+                    
+                    <form method="post" action="/login" class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Username</label>
+                            <input type="text" 
+                                   name="username" 
+                                   required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                                   placeholder="Enter your username" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+                            <input type="password" 
+                                   name="password" 
+                                   required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                                   placeholder="Enter your password" />
+                        </div>
+                        <button type="submit" 
+                                class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-md">
+                            Login
+                        </button>
+                    </form>
+
+                    <div class="mt-6 text-center">
+                        <p class="text-gray-600 text-sm">
+                            Don't have an account? 
+                            <a href="/register" class="text-blue-600 hover:text-blue-800 font-semibold">Register here</a>
+                        </p>
+                    </div>
+
+                    <div class="mt-6 p-4 bg-blue-50 rounded-lg">
+                        <p class="text-sm text-gray-700 font-semibold mb-1">Demo Account:</p>
+                        <p class="text-sm text-gray-600">Username: <code class="bg-white px-2 py-1 rounded">demo</code></p>
+                        <p class="text-sm text-gray-600">Password: <code class="bg-white px-2 py-1 rounded">password123</code></p>
+                    </div>
+                </div>
+            </div>;
+
+            return Results.Razor(TailwindLayout("Login", content, includeNav: false));
+        });
+
+        app.MapPost("/login", async (HttpContext context, AppDbContext db) =>
+        {
+            var form = await context.Request.ReadFormAsync();
+            var username = form["username"].ToString();
+            var password = form["password"].ToString();
+
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Username == username);
+
+            if (user != null && VerifyPassword(password, user.PasswordHash))
+            {
+                var claims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.Name, user.Username),
+                    new Claim(ClaimTypes.Email, user.Email),
+                    new Claim("UserId", user.Id.ToString())
+                };
+
+                var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                var authProperties = new AuthenticationProperties
+                {
+                    IsPersistent = true,
+                    ExpiresUtc = DateTimeOffset.UtcNow.AddHours(24)
+                };
+
+                await context.SignInAsync(
+                    CookieAuthenticationDefaults.AuthenticationScheme,
+                    new ClaimsPrincipal(claimsIdentity),
+                    authProperties);
+
+                return Results.Redirect("/");
+            }
+
+            return Results.Redirect("/login?error=invalid");
+        });
+
+        app.MapGet("/register", (HttpContext context) =>
+        {
+            // Check if already logged in
+            if (context.User.Identity?.IsAuthenticated == true)
+            {
+                return Results.Redirect("/");
+            }
+
+            RenderFragment content = @<div class="max-w-md mx-auto">
+                <div class="bg-white rounded-lg shadow-lg p-8">
+                    <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Register</h1>
+                    
+                    <form method="post" action="/register" class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Username</label>
+                            <input type="text" 
+                                   name="username" 
+                                   required 
+                                   minlength="3"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                                   placeholder="Choose a username" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+                            <input type="email" 
+                                   name="email" 
+                                   required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                                   placeholder="Enter your email" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+                            <input type="password" 
+                                   name="password" 
+                                   required 
+                                   minlength="6"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                                   placeholder="Choose a password (min 6 characters)" />
+                        </div>
+                        <button type="submit" 
+                                class="w-full bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md">
+                            Create Account
+                        </button>
+                    </form>
+
+                    <div class="mt-6 text-center">
+                        <p class="text-gray-600 text-sm">
+                            Already have an account? 
+                            <a href="/login" class="text-blue-600 hover:text-blue-800 font-semibold">Login here</a>
+                        </p>
+                    </div>
+                </div>
+            </div>;
+
+            return Results.Razor(TailwindLayout("Register", content, includeNav: false));
+        });
+
+        app.MapPost("/register", async (HttpContext context, AppDbContext db) =>
+        {
+            var form = await context.Request.ReadFormAsync();
+            var username = form["username"].ToString();
+            var email = form["email"].ToString();
+            var password = form["password"].ToString();
+
+            // Check if user already exists
+            var existingUser = await db.Users.FirstOrDefaultAsync(u => u.Username == username || u.Email == email);
+            if (existingUser != null)
+            {
+                return Results.Redirect("/register?error=exists");
+            }
+
+            // Create new user
+            var user = new User
+            {
+                Username = username,
+                Email = email,
+                PasswordHash = HashPassword(password),
+                CreatedAt = DateTime.Now
+            };
+
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+
+            // Auto login after registration
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim("UserId", user.Id.ToString())
+            };
+
+            var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            var authProperties = new AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(24)
+            };
+
+            await context.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                new ClaimsPrincipal(claimsIdentity),
+                authProperties);
+
+            return Results.Redirect("/");
+        });
+
+        app.MapGet("/logout", async (HttpContext context) =>
+        {
+            await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            return Results.Redirect("/login");
+        });
+
+        app.MapGet("/access-denied", () =>
+        {
+            RenderFragment content = @<div class="max-w-2xl mx-auto">
+                <div class="bg-red-50 border border-red-200 rounded-lg p-8 text-center">
+                    <div class="text-6xl mb-4">🔒</div>
+                    <h1 class="text-3xl font-bold text-red-800 mb-4">Access Denied</h1>
+                    <p class="text-gray-700 mb-6">You need to be logged in to access this page.</p>
+                    <div class="flex gap-4 justify-center">
+                        <a href="/login" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                            Login
+                        </a>
+                        <a href="/" class="bg-gray-200 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-300 transition-colors font-semibold">
+                            Go Home
+                        </a>
+                    </div>
+                </div>
+            </div>;
+
+            return Results.Razor(TailwindLayout("Access Denied", content));
+        });
+
+        app.MapGet("/profile", (HttpContext context) =>
+        {
+            if (!context.User.Identity?.IsAuthenticated ?? true)
+            {
+                return Results.Redirect("/login");
+            }
+
+            var username = context.User.Identity?.Name ?? "Unknown";
+            var email = context.User.FindFirst(ClaimTypes.Email)?.Value ?? "No email";
+            var userId = context.User.FindFirst("UserId")?.Value ?? "N/A";
+
+            RenderFragment content = @<div class="max-w-2xl mx-auto">
+                <div class="bg-white rounded-lg shadow-lg p-8">
+                    <h1 class="text-3xl font-bold text-gray-800 mb-6">Your Profile</h1>
+                    
+                    <div class="space-y-4">
+                        <div class="border-b border-gray-200 pb-4">
+                            <label class="text-sm font-semibold text-gray-500 uppercase">User ID</label>
+                            <p class="text-lg text-gray-800 mt-1">@userId</p>
+                        </div>
+                        <div class="border-b border-gray-200 pb-4">
+                            <label class="text-sm font-semibold text-gray-500 uppercase">Username</label>
+                            <p class="text-lg text-gray-800 mt-1">@username</p>
+                        </div>
+                        <div class="border-b border-gray-200 pb-4">
+                            <label class="text-sm font-semibold text-gray-500 uppercase">Email</label>
+                            <p class="text-lg text-gray-800 mt-1">@email</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-8 flex gap-4">
+                        <a href="/" class="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors text-center font-semibold">
+                            Back to Home
+                        </a>
+                        <a href="/logout" class="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors text-center font-semibold">
+                            Logout
+                        </a>
+                    </div>
+                </div>
+            </div>;
+
+            return Results.Razor(TailwindLayout("Profile", content));
+        });
+
+        app.MapGet("/", (HttpContext context) =>
         {
             var model = new HomeModel
             {
@@ -88,10 +410,10 @@ public class AppDbContext : DbContext
                 CurrentTime = DateTime.Now,
                 VisitorCount = new Random().Next(1, 1000)
             };
-            return Results.Razor(TailwindLayout("Home", Home(model)));
+            return Results.Razor(TailwindLayout("Home", Home(model), context: context));
         });
 
-        app.MapGet("/grid", () =>
+        app.MapGet("/grid", (HttpContext context) =>
         {
             var items = new List<string>
             {
@@ -110,10 +432,10 @@ public class AppDbContext : DbContext
                 @Grid(items)
             </div>;
             
-            return Results.Razor(TailwindLayout("Grid Demo", content));
+            return Results.Razor(TailwindLayout("Grid Demo", content, context: context));
         });
 
-        app.MapGet("/composite", () =>
+        app.MapGet("/composite", (HttpContext context) =>
         {
             var model = new HomeModel
             {
@@ -126,7 +448,7 @@ public class AppDbContext : DbContext
             return Results.Razor(Layout(Home(model), Grid(items)));
         });
 
-        app.MapGet("/cards", () =>
+        app.MapGet("/cards", (HttpContext context) =>
         {
             var model = new HomeModel { Title = "Welcome", Message = "Hello from a card!" };
             var items = new List<string> { "Feature 1", "Feature 2", "Feature 3" };
@@ -144,10 +466,10 @@ public class AppDbContext : DbContext
                 @card2
             </div>;
             
-            return Results.Razor(TailwindLayout("Cards Demo", content));
+            return Results.Razor(TailwindLayout("Cards Demo", content, context: context));
         });
 
-        app.MapGet("/events", () =>
+        app.MapGet("/events", (HttpContext context) =>
         {
             RenderFragment page = @<html lang="en">
                 <head>
@@ -176,7 +498,7 @@ public class AppDbContext : DbContext
             return Results.Razor(page);
         });
 
-        app.MapGet("/search", (string? query) =>
+        app.MapGet("/search", (string? query, HttpContext context) =>
         {
             var result = string.IsNullOrEmpty(query) 
                 ? "No search query provided" 
@@ -192,10 +514,10 @@ public class AppDbContext : DbContext
                 </div>
             </div>;
             
-            return Results.Razor(TailwindLayout("Search Results", content));
+            return Results.Razor(TailwindLayout("Search Results", content, context: context));
         });
 
-        app.MapGet("/external-js", () =>
+        app.MapGet("/external-js", (HttpContext context) =>
         {
             RenderFragment pageContent = @<div>
                 <h1 class="text-4xl font-bold text-gray-800 mb-4">Cards with External JavaScript</h1>
@@ -224,7 +546,7 @@ public class AppDbContext : DbContext
         });
 
         // Database routes
-        app.MapGet("/products", async (AppDbContext db) =>
+        app.MapGet("/products", async (AppDbContext db, HttpContext context) =>
         {
             var products = await db.Products.ToListAsync();
             
@@ -241,10 +563,10 @@ public class AppDbContext : DbContext
                 @Grid(products)
             </div>;
             
-            return Results.Razor(TailwindLayout("Products", content));
+            return Results.Razor(TailwindLayout("Products", content, context: context));
         });
 
-        app.MapGet("/categories", async (AppDbContext db) =>
+        app.MapGet("/categories", async (AppDbContext db, HttpContext context) =>
         {
             var categories = await db.Categories.ToListAsync();
             
@@ -254,10 +576,10 @@ public class AppDbContext : DbContext
                 @Grid(categories)
             </div>;
             
-            return Results.Razor(TailwindLayout("Categories", content));
+            return Results.Razor(TailwindLayout("Categories", content, context: context));
         });
 
-        app.MapGet("/product/{id}", async (int id, AppDbContext db) =>
+        app.MapGet("/product/{id}", async (int id, AppDbContext db, HttpContext context) =>
         {
             var product = await db.Products.FindAsync(id);
             
@@ -289,11 +611,16 @@ public class AppDbContext : DbContext
                 </div>
             </div>;
             
-            return Results.Razor(TailwindLayout($"Product: {product.Name}", content));
+            return Results.Razor(TailwindLayout($"Product: {product.Name}", content, context: context));
         });
 
-        app.MapGet("/add-product", () =>
+        app.MapGet("/add-product", (HttpContext context) =>
         {
+            // Require authentication for adding products
+            if (!context.User.Identity?.IsAuthenticated ?? true)
+            {
+                return Results.Redirect("/login");
+            }
             RenderFragment content = @<div>
                 <a href="/products" class="inline-flex items-center text-blue-600 hover:text-blue-800 mb-6 transition-colors">
                     ← Back to Products
@@ -343,10 +670,10 @@ public class AppDbContext : DbContext
                 </div>
             </div>;
             
-            return Results.Razor(TailwindLayout("Add Product", content));
+            return Results.Razor(TailwindLayout("Add Product", content, context: context));
         });
 
-        app.MapPost("/products", async (HttpRequest request, AppDbContext db) =>
+        app.MapPost("/products", async (HttpRequest request, HttpContext context, AppDbContext db) =>
         {
             var form = await request.ReadFormAsync();
             
@@ -557,7 +884,7 @@ public class AppDbContext : DbContext
     }
 
     // Tailwind CSS Layout - Base layout with Tailwind from CDN
-    private static RenderFragment TailwindLayout(string title, RenderFragment content, bool includeNav = true)
+    private static RenderFragment TailwindLayout(string title, RenderFragment content, bool includeNav = true, HttpContext? context = null)
     {
         return @<html lang="en">
             <head>
@@ -579,7 +906,7 @@ public class AppDbContext : DbContext
             <body class="bg-gray-50 min-h-screen">
                 @if (includeNav)
                 {
-                    @Navigation()
+                    @Navigation(context)
                 }
                 <main class="container mx-auto px-4 py-8">
                     @content
@@ -594,8 +921,11 @@ public class AppDbContext : DbContext
     }
 
     // Navigation component
-    private static RenderFragment Navigation()
+    private static RenderFragment Navigation(HttpContext? context = null)
     {
+        var isAuthenticated = context?.User?.Identity?.IsAuthenticated ?? false;
+        var username = context?.User?.Identity?.Name;
+
         return @<nav class="bg-white shadow-lg">
             <div class="container mx-auto px-4">
                 <div class="flex justify-between items-center py-4">
@@ -608,10 +938,27 @@ public class AppDbContext : DbContext
                             <a href="/events" class="text-gray-700 hover:text-blue-600 transition-colors">Events</a>
                         </div>
                     </div>
-                    <div>
-                        <a href="/add-product" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                            Add Product
-                        </a>
+                    <div class="flex items-center space-x-4">
+                        @if (isAuthenticated)
+                        {
+                            <span class="text-gray-700 hidden md:inline">Welcome, <span class="font-semibold text-blue-600">@username</span></span>
+                            <a href="/profile" class="text-gray-700 hover:text-blue-600 transition-colors">Profile</a>
+                            <a href="/add-product" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                Add Product
+                            </a>
+                            <a href="/logout" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
+                                Logout
+                            </a>
+                        }
+                        else
+                        {
+                            <a href="/login" class="text-gray-700 hover:text-blue-600 transition-colors font-semibold">
+                                Login
+                            </a>
+                            <a href="/register" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                Register
+                            </a>
+                        }
                     </div>
                 </div>
             </div>
