@@ -1,0 +1,13 @@
+{
+  "name": "razorpages-client",
+  "version": "1.0.0",
+  "description": "TypeScript client-side code for Razor Pages app",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "version": "tsc --version"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}
