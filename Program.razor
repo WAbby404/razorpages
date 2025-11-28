@@ -1066,12 +1066,12 @@ public static bool VerifyPassword(string password, string hash)
                     }
                 </style>
             </head>
-            <body class="bg-gray-50 min-h-screen">
+            <body class="bg-gray-50 min-h-screen flex flex-col">
                 @if (includeNav)
                 {
                     @Navigation(context)
                 }
-                <main class="container mx-auto px-4 py-8">
+                <main class="container mx-auto px-4 py-8 flex-grow">
                     @content
                 </main>
                 <footer class="bg-gray-800 text-white py-6 mt-12">
