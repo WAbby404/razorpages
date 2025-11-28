@@ -7,6 +7,8 @@
 @using Microsoft.IdentityModel.Tokens;
 @using System.IdentityModel.Tokens.Jwt;
 @using System.Text;
+@using Stripe;
+@using Stripe.Checkout;
 
 @code {
     public class Product
@@ -34,6 +36,34 @@ public class User
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }
 
+public class UserSubscription
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public User? User { get; set; }
+    public string PlanName { get; set; } = string.Empty; // "Basic Monthly", "Pro Yearly", etc.
+    public string StripePriceId { get; set; } = string.Empty;
+    public string StripeSubscriptionId { get; set; } = string.Empty;
+    public string StripeCustomerId { get; set; } = string.Empty;
+    public string Status { get; set; } = "inactive"; // active, canceled, past_due, trialing
+    public DateTime? CurrentPeriodStart { get; set; }
+    public DateTime? CurrentPeriodEnd { get; set; }
+    public bool CancelAtPeriodEnd { get; set; } = false;
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class SubscriptionPlan
+{
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public decimal MonthlyPrice { get; set; }
+    public decimal YearlyPrice { get; set; }
+    public string MonthlyPriceId { get; set; } = string.Empty;
+    public string YearlyPriceId { get; set; } = string.Empty;
+    public List<string> Features { get; set; } = new();
+}
+
 // Database Context
 public class AppDbContext : DbContext
 {
@@ -44,6 +74,7 @@ public class AppDbContext : DbContext
     public DbSet<Product> Products { get; set; }
     public DbSet<Category> Categories { get; set; }
     public DbSet<User> Users { get; set; }
+    public DbSet<UserSubscription> Subscriptions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -145,6 +176,9 @@ public static bool VerifyPassword(string password, string hash)
         });
         
         builder.Services.AddAuthorization();
+
+        // Configure Stripe
+        StripeConfiguration.ApiKey = builder.Configuration["Stripe:SecretKey"] ?? "sk_test_YOUR_SECRET_KEY_HERE";
 
         var app = builder.Build();
 
@@ -826,8 +860,408 @@ public static bool VerifyPassword(string password, string hash)
             AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme 
         });
 
+        // ============================================
+        // SUBSCRIPTION/STRIPE ENDPOINTS
+        // ============================================
+
+        // Get subscription plans
+        var subscriptionPlans = new List<SubscriptionPlan>
+        {
+            new SubscriptionPlan
+            {
+                Name = "Basic",
+                Description = "Perfect for getting started",
+                MonthlyPrice = 9.99m,
+                YearlyPrice = 99.99m,
+                MonthlyPriceId = builder.Configuration["Stripe:PriceIds:MonthlyBasic"] ?? "price_YOUR_MONTHLY_BASIC_PRICE_ID",
+                YearlyPriceId = builder.Configuration["Stripe:PriceIds:YearlyBasic"] ?? "price_YOUR_YEARLY_BASIC_PRICE_ID",
+                Features = new List<string> { "Feature 1", "Feature 2", "Feature 3", "Email Support" }
+            },
+            new SubscriptionPlan
+            {
+                Name = "Pro",
+                Description = "For power users",
+                MonthlyPrice = 29.99m,
+                YearlyPrice = 299.99m,
+                MonthlyPriceId = builder.Configuration["Stripe:PriceIds:MonthlyPro"] ?? "price_YOUR_MONTHLY_PRO_PRICE_ID",
+                YearlyPriceId = builder.Configuration["Stripe:PriceIds:YearlyPro"] ?? "price_YOUR_YEARLY_PRO_PRICE_ID",
+                Features = new List<string> { "Everything in Basic", "Feature 4", "Feature 5", "Priority Support", "Advanced Analytics" }
+            }
+        };
+
+        // Subscribe page - show plans and embedded checkout
+        app.MapGet("/subscribe", (HttpContext context) =>
+        {
+            // Require authentication
+            if (!context.User.Identity?.IsAuthenticated ?? true)
+            {
+                return Results.Redirect("/login?returnUrl=/subscribe");
+            }
+
+            var publishableKey = builder.Configuration["Stripe:PublishableKey"] ?? "pk_test_YOUR_PUBLISHABLE_KEY_HERE";
+
+            RenderFragment content = @<div>
+                <div class="max-w-6xl mx-auto">
+                    <div class="text-center mb-12">
+                        <h1 class="text-4xl font-bold text-gray-800 mb-4">Choose Your Plan</h1>
+                        <p class="text-xl text-gray-600">Get started with a subscription that fits your needs</p>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-8 mb-12">
+                        @foreach (var plan in subscriptionPlans)
+                        {
+                            <div class="bg-white rounded-lg shadow-lg p-8 border-2 border-gray-200 hover:border-blue-500 transition-colors">
+                                <h2 class="text-3xl font-bold text-gray-800 mb-2">@plan.Name</h2>
+                                <p class="text-gray-600 mb-6">@plan.Description</p>
+                                
+                                <div class="mb-6">
+                                    <div class="flex items-baseline mb-2">
+                                        <span class="text-4xl font-bold text-gray-800">$@plan.MonthlyPrice</span>
+                                        <span class="text-gray-600 ml-2">/month</span>
+                                    </div>
+                                    <div class="text-sm text-gray-500">
+                                        or $@plan.YearlyPrice/year (save @(((plan.MonthlyPrice * 12 - plan.YearlyPrice) / (plan.MonthlyPrice * 12) * 100).ToString("F0"))%)
+                                    </div>
+                                </div>
+
+                                <ul class="space-y-3 mb-8">
+                                    @foreach (var feature in plan.Features)
+                                    {
+                                        <li class="flex items-center text-gray-700">
+                                            <svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            @feature
+                                        </li>
+                                    }
+                                </ul>
+
+                                <div class="space-y-3">
+                                    <button 
+                                        onclick="createCheckout('@plan.MonthlyPriceId', 'monthly')"
+                                        class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                                        Subscribe Monthly
+                                    </button>
+                                    <button 
+                                        onclick="createCheckout('@plan.YearlyPriceId', 'yearly')"
+                                        class="w-full bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-semibold">
+                                        Subscribe Yearly (Best Value!)
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="text-center text-sm text-gray-500">
+                        <p>Cancel anytime. No hidden fees.</p>
+                    </div>
+                </div>
+
+                <script src="https://js.stripe.com/v3/"></script>
+                <script>
+                    const stripe = Stripe('@publishableKey');
+
+                    async function createCheckout(priceId, interval) {
+                        try {
+                            const response = await fetch('/api/stripe/create-checkout', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ priceId: priceId, interval: interval })
+                            });
+
+                            const data = await response.json();
+
+                            if (data.error) {
+                                alert('Error: ' + data.error);
+                                return;
+                            }
+
+                            // Redirect to Stripe Checkout
+                            const { error } = await stripe.redirectToCheckout({
+                                sessionId: data.sessionId
+                            });
+
+                            if (error) {
+                                alert('Stripe error: ' + error.message);
+                            }
+                        } catch (error) {
+                            console.error('Error:', error);
+                            alert('Failed to create checkout session');
+                        }
+                    }
+                </script>
+            </div>;
+
+            return Results.Razor(TailwindLayout("Subscribe", content, context: context));
+        });
+
+        // API: Create Stripe Checkout Session
+        app.MapPost("/api/stripe/create-checkout", async (HttpContext context, CheckoutRequest request, AppDbContext db) =>
+        {
+            if (!context.User.Identity?.IsAuthenticated ?? true)
+            {
+                return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
+            }
+
+            var userId = int.Parse(context.User.FindFirst("UserId")?.Value ?? "0");
+            var user = await db.Users.FindAsync(userId);
+
+            if (user == null)
+            {
+                return Results.Json(new { error = "User not found" }, statusCode: 404);
+            }
+
+            try
+            {
+                var options = new SessionCreateOptions
+                {
+                    CustomerEmail = user.Email,
+                    PaymentMethodTypes = new List<string> { "card" },
+                    LineItems = new List<SessionLineItemOptions>
+                    {
+                        new SessionLineItemOptions
+                        {
+                            Price = request.PriceId,
+                            Quantity = 1
+                        }
+                    },
+                    Mode = "subscription",
+                    SuccessUrl = $"{context.Request.Scheme}://{context.Request.Host}/subscribe/success?session_id={{CHECKOUT_SESSION_ID}}",
+                    CancelUrl = $"{context.Request.Scheme}://{context.Request.Host}/subscribe",
+                    ClientReferenceId = userId.ToString(),
+                    Metadata = new Dictionary<string, string>
+                    {
+                        { "user_id", userId.ToString() },
+                        { "interval", request.Interval }
+                    }
+                };
+
+                var service = new SessionService();
+                var session = await service.CreateAsync(options);
+
+                return Results.Json(new { sessionId = session.Id });
+            }
+            catch (StripeException e)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: 400);
+            }
+        });
+
+        // Success page after checkout
+        app.MapGet("/subscribe/success", async (HttpContext context, string session_id, AppDbContext db) =>
+        {
+            if (!context.User.Identity?.IsAuthenticated ?? true)
+            {
+                return Results.Redirect("/login");
+            }
+
+            RenderFragment content = @<div class="max-w-2xl mx-auto text-center">
+                <div class="bg-white rounded-lg shadow-lg p-12">
+                    <svg class="w-20 h-20 text-green-500 mx-auto mb-6" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <h1 class="text-4xl font-bold text-gray-800 mb-4">Payment Successful!</h1>
+                    <p class="text-xl text-gray-600 mb-8">Thank you for subscribing. Your subscription is now active.</p>
+                    <div class="space-x-4">
+                        <a href="/my-subscriptions" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                            View My Subscriptions
+                        </a>
+                        <a href="/" class="inline-block bg-gray-200 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-300 transition-colors font-semibold">
+                            Go Home
+                        </a>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-8">
+                        Session ID: @session_id
+                    </p>
+                </div>
+            </div>;
+
+            return Results.Razor(TailwindLayout("Success", content, context: context));
+        });
+
+        // My Subscriptions page
+        app.MapGet("/my-subscriptions", async (HttpContext context, AppDbContext db) =>
+        {
+            if (!context.User.Identity?.IsAuthenticated ?? true)
+            {
+                return Results.Redirect("/login");
+            }
+
+            var userId = int.Parse(context.User.FindFirst("UserId")?.Value ?? "0");
+            var subscriptions = await db.Subscriptions
+                .Where(s => s.UserId == userId)
+                .OrderByDescending(s => s.CreatedAt)
+                .ToListAsync();
+
+            RenderFragment content = @<div>
+                <div class="max-w-4xl mx-auto">
+                    <h1 class="text-4xl font-bold text-gray-800 mb-8">My Subscriptions</h1>
+
+                    @if (!subscriptions.Any())
+                    {
+                        <div class="bg-white rounded-lg shadow-md p-8 text-center">
+                            <p class="text-gray-600 mb-4">You don't have any active subscriptions yet.</p>
+                            <a href="/subscribe" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                                Browse Plans
+                            </a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="space-y-6">
+                            @foreach (var subscription in subscriptions)
+                            {
+                                <div class="bg-white rounded-lg shadow-md p-6">
+                                    <div class="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h2 class="text-2xl font-bold text-gray-800">@subscription.PlanName</h2>
+                                            <p class="text-gray-600">@subscription.StripePriceId</p>
+                                        </div>
+                                        <span class="px-4 py-2 rounded-full text-sm font-semibold @(subscription.Status == "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800")">
+                                            @subscription.Status.ToUpper()
+                                        </span>
+                                    </div>
+
+                                    @if (subscription.CurrentPeriodStart.HasValue && subscription.CurrentPeriodEnd.HasValue)
+                                    {
+                                        <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                                            <div>
+                                                <span class="font-semibold">Period Start:</span> @subscription.CurrentPeriodStart.Value.ToString("MMM dd, yyyy")
+                                            </div>
+                                            <div>
+                                                <span class="font-semibold">Period End:</span> @subscription.CurrentPeriodEnd.Value.ToString("MMM dd, yyyy")
+                                            </div>
+                                        </div>
+                                    }
+
+                                    @if (subscription.CancelAtPeriodEnd)
+                                    {
+                                        <div class="bg-yellow-50 border border-yellow-200 rounded p-3 text-sm text-yellow-800 mb-4">
+                                            This subscription will cancel at the end of the current period.
+                                        </div>
+                                    }
+
+                                    <div class="text-xs text-gray-500">
+                                        Subscribed on @subscription.CreatedAt.ToString("MMM dd, yyyy")
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>;
+
+            return Results.Razor(TailwindLayout("My Subscriptions", content, context: context));
+        });
+
+        // Stripe Webhook endpoint
+        app.MapPost("/api/stripe/webhook", async (HttpRequest request, AppDbContext db) =>
+        {
+            var json = await new StreamReader(request.Body).ReadToEndAsync();
+            var webhookSecret = builder.Configuration["Stripe:WebhookSecret"];
+
+            try
+            {
+                var stripeEvent = EventUtility.ConstructEvent(
+                    json,
+                    request.Headers["Stripe-Signature"],
+                    webhookSecret
+                );
+
+                // Handle the event
+                if (stripeEvent.Type == "checkout.session.completed")
+                {
+                    var session = stripeEvent.Data.Object as Session;
+                    if (session?.ClientReferenceId != null)
+                    {
+                        var userId = int.Parse(session.ClientReferenceId);
+                        var interval = session.Metadata.GetValueOrDefault("interval", "monthly");
+                        
+                        // Get subscription details from Stripe
+                        var subscriptionId = session.SubscriptionId;
+                        var subscriptionService = new SubscriptionService();
+                        Subscription stripeSubscription = await subscriptionService.GetAsync(subscriptionId);
+
+                        // Determine plan name
+                        var planName = $"Unknown {interval}";
+                        if (subscriptionPlans.Any())
+                        {
+                            var priceId = stripeSubscription.Items.Data[0].Price.Id;
+                            var plan = subscriptionPlans.FirstOrDefault(p => 
+                                p.MonthlyPriceId == priceId || p.YearlyPriceId == priceId);
+                            if (plan != null)
+                            {
+                                planName = $"{plan.Name} {(interval == "monthly" ? "Monthly" : "Yearly")}";
+                            }
+                        }
+
+                        // Create subscription record
+                        var subscription = new UserSubscription
+                        {
+                            UserId = userId,
+                            PlanName = planName,
+                            StripePriceId = stripeSubscription.Items.Data[0].Price.Id,
+                            StripeSubscriptionId = subscriptionId ?? "",
+                            StripeCustomerId = session.CustomerId ?? "",
+                            Status = stripeSubscription.Status,
+                            // CurrentPeriodStart = stripeSubscription.CurrentPeriodStart,
+                            // CurrentPeriodEnd = stripeSubscription.CurrentPeriodEnd,
+                            CreatedAt = DateTime.Now
+                        };
+
+                        db.Subscriptions.Add(subscription);
+                        await db.SaveChangesAsync();
+                    }
+                }
+                else if (stripeEvent.Type == "customer.subscription.updated")
+                {
+                    var stripeSubscription = stripeEvent.Data.Object as Stripe.Subscription;
+                    if (stripeSubscription != null)
+                    {
+                        var subscription = await db.Subscriptions
+                            .FirstOrDefaultAsync(s => s.StripeSubscriptionId == stripeSubscription.Id);
+
+                        if (subscription != null)
+                        {
+                            subscription.Status = stripeSubscription.Status;
+                            // subscription.CurrentPeriodStart = stripeSubscription.CurrentPeriodStart;
+                            // subscription.CurrentPeriodEnd = stripeSubscription.CurrentPeriodEnd;
+                            subscription.CancelAtPeriodEnd = stripeSubscription.CancelAtPeriodEnd;
+                            subscription.UpdatedAt = DateTime.Now;
+                            await db.SaveChangesAsync();
+                        }
+                    }
+                }
+                else if (stripeEvent.Type == "customer.subscription.deleted")
+                {
+                    var stripeSubscription = stripeEvent.Data.Object as Stripe.Subscription;
+                    if (stripeSubscription != null)
+                    {
+                        var subscription = await db.Subscriptions
+                            .FirstOrDefaultAsync(s => s.StripeSubscriptionId == stripeSubscription.Id);
+
+                        if (subscription != null)
+                        {
+                            subscription.Status = "canceled";
+                            subscription.UpdatedAt = DateTime.Now;
+                            await db.SaveChangesAsync();
+                        }
+                    }
+                }
+
+                return Results.Ok();
+            }
+            catch (StripeException)
+            {
+                return Results.BadRequest();
+            }
+        });
+
         app.Run();
     }
+
+    // Helper record for checkout requests
+    public record CheckoutRequest(string PriceId, string Interval);
 
     // Helper class for API login requests
     public record LoginRequest(string Username, string Password);
