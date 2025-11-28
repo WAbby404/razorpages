@@ -1251,9 +1251,17 @@ public static bool VerifyPassword(string password, string hash)
 
                 return Results.Ok();
             }
-            catch (StripeException)
+            catch (StripeException ex)
             {
-                return Results.BadRequest();
+                Console.WriteLine($"Stripe webhook error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Webhook processing error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return Results.BadRequest(new { error = ex.Message });
             }
         });
 
