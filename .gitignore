@@ -4,7 +4,6 @@
 ## Get latest from `dotnet new gitignore`
 
 app.db*
-*.md
 
 # Node modules
 node_modules/
